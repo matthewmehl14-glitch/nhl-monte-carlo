@@ -1,8 +1,8 @@
 {
     "total_bets": 2514,
     "total_wagered": 62850.0,
-    "net_profit": 5520.0,
-    "roi": 8.78,
+    "net_profit": 5305.0,
+    "roi": 8.44,
     "buckets": [
         {
             "range": "0.0% - 2.0%",
@@ -13,24 +13,24 @@
         },
         {
             "range": "2.0% - 4.0%",
-            "bets": 149,
-            "win_rate": "47.0%",
-            "profit": 37.5,
-            "roi": 1.01
+            "bets": 131,
+            "win_rate": "46.6%",
+            "profit": 3.75,
+            "roi": 0.11
         },
         {
             "range": "4.0% - 6.0%",
-            "bets": 329,
-            "win_rate": "48.6%",
-            "profit": 375.0,
-            "roi": 4.56
+            "bets": 333,
+            "win_rate": "54.4%",
+            "profit": 1403.75,
+            "roi": 16.86
         },
         {
             "range": "6.0%+",
-            "bets": 2036,
-            "win_rate": "51.2%",
-            "profit": 5107.5,
-            "roi": 10.03
+            "bets": 2050,
+            "win_rate": "50.0%",
+            "profit": 3897.5,
+            "roi": 7.6
         }
     ]
 }
