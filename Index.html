@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NHL Poisson Projections</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans p-4 md:p-8">
+    <div class="max-w-4xl mx-auto">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h1 class="text-3xl font-bold">NHL Poisson System</h1>
+                <p class="text-sm text-slate-400">10k Iterations | Expected Goals (xG) | Pinnacle Benchmark</p>
+            </div>
+            <div class="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
+                <button id="tab-live" onclick="showTab('live')" class="px-4 py-1.5 rounded-md text-sm font-semibold bg-blue-600 text-white">Live Projections</button>
+                <button id="tab-backtest" onclick="showTab('backtest')" class="px-4 py-1.5 rounded-md text-sm font-semibold text-slate-400 hover:text-white">Backtest</button>
+            </div>
+        </div>
+
+        <div id="view-live" class="space-y-4">
+            <div id="live-container" class="space-y-4"></div>
+        </div>
+
+        <div id="view-backtest" class="hidden space-y-6">
+            <div id="backtest-summary" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+            <div class="bg-slate-800 rounded-lg border border-slate-700 p-5">
+                <h2 class="text-xl font-bold mb-4">EV% Bucket Performance</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm text-slate-300">
+                        <thead class="bg-slate-900 text-slate-400 uppercase text-xs">
+                            <tr>
+                                <th class="p-3">EV Range</th>
+                                <th class="p-3">Bets</th>
+                                <th class="p-3">Win Rate</th>
+                                <th class="p-3">Net Profit ($25)</th>
+                                <th class="p-3">ROI</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bucket-table-body" class="divide-y divide-slate-700"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showTab(tab) {
+            document.getElementById('view-live').classList.toggle('hidden', tab !== 'live');
+            document.getElementById('view-backtest').classList.toggle('hidden', tab !== 'backtest');
+            document.getElementById('tab-live').className = `px-4 py-1.5 rounded-md text-sm font-semibold ${tab === 'live' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`;
+            document.getElementById('tab-backtest').className = `px-4 py-1.5 rounded-md text-sm font-semibold ${tab === 'backtest' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`;
+        }
+
+        async function loadData() {
+            try {
+                const res = await fetch('projections.json');
+                const data = await res.json();
+                const container = document.getElementById('live-container');
+
+                if (!data || data.length === 0) {
+                    container.innerHTML = `<div class="bg-slate-800 border border-slate-700 rounded-lg p-8 text-center text-slate-400">No +EV edges found right now.</div>`;
+                } else {
+                    container.innerHTML = '';
+                    data.forEach(bet => {
+                        const edgeColor = bet.edge > 0 ? 'text-green-400' : 'text-red-400';
+                        container.innerHTML += `
+                            <div class="bg-slate-800 border border-slate-700 rounded-lg p-5">
+                                <div class="flex justify-between items-center mb-2">
+                                    <h2 class="text-xl font-bold">${bet.game}</h2>
+                                    <span class="text-sm text-slate-400">Pinnacle Fair: ${bet.true_prob.toFixed(1)}%</span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4 mt-3">
+                                    <div class="bg-slate-900 p-3 rounded border border-slate-700 border-l-4 border-l-blue-500">
+                                        <p class="text-xs text-slate-400">${bet.bookmaker}</p>
+                                        <p class="text-base font-semibold">${bet.market} @ ${bet.odds > 0 ? '+' : ''}${bet.odds}</p>
+                                    </div>
+                                    <div class="bg-slate-900 p-3 rounded text-right">
+                                        <p class="text-xs text-slate-400">Model Expected Edge</p>
+                                        <p class="text-base font-bold ${edgeColor}">+${bet.edge.toFixed(2)}%</p>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+            } catch (err) { console.error(err); }
+
+            try {
+                const bRes = await fetch('backtest_results.json');
+                if (bRes.ok) {
+                    const bData = await bRes.json();
+                    document.getElementById('backtest-summary').innerHTML = `
+                        <div class="bg-slate-800 p-4 rounded-lg border border-slate-700"><p class="text-xs text-slate-400">Total Wagers</p><p class="text-2xl font-bold">${bData.total_bets}</p></div>
+                        <div class="bg-slate-800 p-4 rounded-lg border border-slate-700"><p class="text-xs text-slate-400">Risked ($25/bet)</p><p class="text-2xl font-bold">$${bData.total_wagered.toLocaleString()}</p></div>
+                        <div class="bg-slate-800 p-4 rounded-lg border border-slate-700"><p class="text-xs text-slate-400">Net Profit</p><p class="text-2xl font-bold ${bData.net_profit >= 0 ? 'text-green-400' : 'text-red-400'}">$${bData.net_profit.toFixed(2)}</p></div>
+                        <div class="bg-slate-800 p-4 rounded-lg border border-slate-700"><p class="text-xs text-slate-400">Total ROI</p><p class="text-2xl font-bold ${bData.roi >= 0 ? 'text-green-400' : 'text-red-400'}">${bData.roi.toFixed(2)}%</p></div>
+                    `;
+                    document.getElementById('bucket-table-body').innerHTML = bData.buckets.map(b => `
+                        <tr>
+                            <td class="p-3 font-medium">${b.range}</td><td class="p-3">${b.bets}</td><td class="p-3">${b.win_rate}</td>
+                            <td class="p-3 font-semibold ${b.profit >= 0 ? 'text-green-400' : 'text-red-400'}">$${b.profit.toFixed(2)}</td>
+                            <td class="p-3 font-semibold ${b.roi >= 0 ? 'text-green-400' : 'text-red-400'}">${b.roi.toFixed(2)}%</td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (err) {}
+        }
+        loadData();
+    </script>
+</body>
+</html>
