@@ -25,21 +25,42 @@
 
         <div id="view-backtest" class="hidden space-y-6">
             <div id="backtest-summary" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
-            <div class="bg-slate-800 rounded-lg border border-slate-700 p-5">
-                <h2 class="text-xl font-bold mb-4">EV% Bucket Performance</h2>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-sm text-slate-300">
-                        <thead class="bg-slate-900 text-slate-400 uppercase text-xs">
-                            <tr>
-                                <th class="p-3">EV Range</th>
-                                <th class="p-3">Bets</th>
-                                <th class="p-3">Win Rate</th>
-                                <th class="p-3">Net Profit ($25)</th>
-                                <th class="p-3">ROI</th>
-                            </tr>
-                        </thead>
-                        <tbody id="bucket-table-body" class="divide-y divide-slate-700"></tbody>
-                    </table>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- EV Buckets Table -->
+                <div class="bg-slate-800 rounded-lg border border-slate-700 p-5">
+                    <h2 class="text-lg font-bold mb-4">EV% Bucket Performance</h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm text-slate-300">
+                            <thead class="bg-slate-900 text-slate-400 uppercase text-xs">
+                                <tr>
+                                    <th class="p-2">EV Range</th>
+                                    <th class="p-2">Bets</th>
+                                    <th class="p-2">Net Profit</th>
+                                    <th class="p-2">ROI</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bucket-table-body" class="divide-y divide-slate-700"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Market Type Table -->
+                <div class="bg-slate-800 rounded-lg border border-slate-700 p-5">
+                    <h2 class="text-lg font-bold mb-4">Market Type Performance</h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm text-slate-300">
+                            <thead class="bg-slate-900 text-slate-400 uppercase text-xs">
+                                <tr>
+                                    <th class="p-2">Market</th>
+                                    <th class="p-2">Bets</th>
+                                    <th class="p-2">Net Profit</th>
+                                    <th class="p-2">ROI</th>
+                                </tr>
+                            </thead>
+                            <tbody id="market-table-body" class="divide-y divide-slate-700"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -97,11 +118,20 @@
                         <div class="bg-slate-800 p-4 rounded-lg border border-slate-700"><p class="text-xs text-slate-400">Net Profit</p><p class="text-2xl font-bold ${bData.net_profit >= 0 ? 'text-green-400' : 'text-red-400'}">$${bData.net_profit.toFixed(2)}</p></div>
                         <div class="bg-slate-800 p-4 rounded-lg border border-slate-700"><p class="text-xs text-slate-400">Total ROI</p><p class="text-2xl font-bold ${bData.roi >= 0 ? 'text-green-400' : 'text-red-400'}">${bData.roi.toFixed(2)}%</p></div>
                     `;
+                    
                     document.getElementById('bucket-table-body').innerHTML = bData.buckets.map(b => `
                         <tr>
-                            <td class="p-3 font-medium">${b.range}</td><td class="p-3">${b.bets}</td><td class="p-3">${b.win_rate}</td>
-                            <td class="p-3 font-semibold ${b.profit >= 0 ? 'text-green-400' : 'text-red-400'}">$${b.profit.toFixed(2)}</td>
-                            <td class="p-3 font-semibold ${b.roi >= 0 ? 'text-green-400' : 'text-red-400'}">${b.roi.toFixed(2)}%</td>
+                            <td class="p-2 font-medium">${b.range}</td><td class="p-2">${b.bets}</td>
+                            <td class="p-2 font-semibold ${b.profit >= 0 ? 'text-green-400' : 'text-red-400'}">$${b.profit.toFixed(2)}</td>
+                            <td class="p-2 font-semibold ${b.roi >= 0 ? 'text-green-400' : 'text-red-400'}">${b.roi.toFixed(2)}%</td>
+                        </tr>
+                    `).join('');
+
+                    document.getElementById('market-table-body').innerHTML = bData.markets.map(m => `
+                        <tr>
+                            <td class="p-2 font-medium">${m.type}</td><td class="p-2">${m.bets}</td>
+                            <td class="p-2 font-semibold ${m.profit >= 0 ? 'text-green-400' : 'text-red-400'}">$${m.profit.toFixed(2)}</td>
+                            <td class="p-2 font-semibold ${m.roi >= 0 ? 'text-green-400' : 'text-red-400'}">${m.roi.toFixed(2)}%</td>
                         </tr>
                     `).join('');
                 }
