@@ -76,7 +76,7 @@
 
         async function loadData() {
             try {
-                const res = await fetch('projections.json');
+                const res = await fetch('projections.json?v=' + Date.now());
                 const data = await res.json();
                 const container = document.getElementById('live-container');
 
@@ -106,10 +106,10 @@
                         `;
                     });
                 }
-            } catch (err) { console.error(err); }
+            } catch (err) {}
 
             try {
-                const bRes = await fetch('backtest_results.json');
+                const bRes = await fetch('backtest_results.json?v=' + Date.now());
                 if (bRes.ok) {
                     const bData = await bRes.json();
                     document.getElementById('backtest-summary').innerHTML = `
@@ -119,21 +119,29 @@
                         <div class="bg-slate-800 p-4 rounded-lg border border-slate-700"><p class="text-xs text-slate-400">Total ROI</p><p class="text-2xl font-bold ${bData.roi >= 0 ? 'text-green-400' : 'text-red-400'}">${bData.roi.toFixed(2)}%</p></div>
                     `;
                     
-                    document.getElementById('bucket-table-body').innerHTML = bData.buckets.map(b => `
-                        <tr>
-                            <td class="p-2 font-medium">${b.range}</td><td class="p-2">${b.bets}</td>
-                            <td class="p-2 font-semibold ${b.profit >= 0 ? 'text-green-400' : 'text-red-400'}">$${b.profit.toFixed(2)}</td>
-                            <td class="p-2 font-semibold ${b.roi >= 0 ? 'text-green-400' : 'text-red-400'}">${b.roi.toFixed(2)}%</td>
-                        </tr>
-                    `).join('');
+                    if (bData.buckets) {
+                        document.getElementById('bucket-table-body').innerHTML = bData.buckets.map(b => `
+                            <tr>
+                                <td class="p-2 font-medium">${b.range}</td><td class="p-2">${b.bets}</td>
+                                <td class="p-2 font-semibold ${b.profit >= 0 ? 'text-green-400' : 'text-red-400'}">$${b.profit.toFixed(2)}</td>
+                                <td class="p-2 font-semibold ${b.roi >= 0 ? 'text-green-400' : 'text-red-400'}">${b.roi.toFixed(2)}%</td>
+                            </tr>
+                        `).join('');
+                    }
 
-                    document.getElementById('market-table-body').innerHTML = bData.markets.map(m => `
-                        <tr>
-                            <td class="p-2 font-medium">${m.type}</td><td class="p-2">${m.bets}</td>
-                            <td class="p-2 font-semibold ${m.profit >= 0 ? 'text-green-400' : 'text-red-400'}">$${m.profit.toFixed(2)}</td>
-                            <td class="p-2 font-semibold ${m.roi >= 0 ? 'text-green-400' : 'text-red-400'}">${m.roi.toFixed(2)}%</td>
-                        </tr>
-                    `).join('');
+                    if (bData.markets && bData.markets.length > 0) {
+                        document.getElementById('market-table-body').innerHTML = bData.markets.map(m => `
+                            <tr>
+                                <td class="p-2 font-medium">${m.type}</td><td class="p-2">${m.bets}</td>
+                                <td class="p-2 font-semibold ${m.profit >= 0 ? 'text-green-400' : 'text-red-400'}">$${m.profit.toFixed(2)}</td>
+                                <td class="p-2 font-semibold ${m.roi >= 0 ? 'text-green-400' : 'text-red-400'}">${m.roi.toFixed(2)}%</td>
+                            </tr>
+                        `).join('');
+                    } else {
+                        document.getElementById('market-table-body').innerHTML = `
+                            <tr><td colspan="4" class="p-3 text-center text-slate-400 text-xs">Run the backtest action to populate market data.</td></tr>
+                        `;
+                    }
                 }
             } catch (err) {}
         }
