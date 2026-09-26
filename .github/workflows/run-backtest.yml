@@ -1,0 +1,35 @@
+name: Run Historical Backtest
+
+on:
+  workflow_dispatch: # Manual trigger only
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: pip install requests numpy pandas
+
+      - name: Run Backtester
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: python backtest.py
+
+      - name: Commit Backtest Results
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add backtest_results.json || true
+          git commit -m "Updated backtest results" || echo "No changes"
+          git push || echo "No changes to push"
