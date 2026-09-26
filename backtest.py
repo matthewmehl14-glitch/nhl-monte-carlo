@@ -2,23 +2,41 @@ import os
 import json
 import requests
 import pandas as pd
-import numpy as np
 import time
 from datetime import datetime, timedelta
 
-# 1. FIX: Pull the actual API key from GitHub Actions secrets
 API_KEY = os.environ.get("ODDS_API_KEY")
 START_DATE = "2025-10-10T12:00:00Z"
 END_DATE = "2026-04-15T12:00:00Z"
 INITIAL_BANKROLL = 1000.0
 FLAT_BET_AMOUNT = 25.0
 
+# Critical mapping to link Odds API full names to official NHL API abbreviations
+TEAM_ABBREVS = {
+    "Anaheim Ducks": "ANA", "Boston Bruins": "BOS", "Buffalo Sabres": "BUF",
+    "Calgary Flames": "CGY", "Carolina Hurricanes": "CAR", "Chicago Blackhawks": "CHI",
+    "Colorado Avalanche": "COL", "Columbus Blue Jackets": "CBJ", "Dallas Stars": "DAL",
+    "Detroit Red Wings": "DET", "Edmonton Oilers": "EDM", "Florida Panthers": "FLA",
+    "Los Angeles Kings": "LAK", "Minnesota Wild": "MIN", "Montréal Canadiens": "MTL", "Montreal Canadiens": "MTL",
+    "Nashville Predators": "NSH", "New Jersey Devils": "NJD", "New York Islanders": "NYI",
+    "New York Rangers": "NYR", "Ottawa Senators": "OTT", "Philadelphia Flyers": "PHI",
+    "Pittsburgh Penguins": "PIT", "San Jose Sharks": "SJS", "Seattle Kraken": "SEA",
+    "St. Louis Blues": "STL", "St Louis Blues": "STL", "Tampa Bay Lightning": "TBL", 
+    "Toronto Maple Leafs": "TOR", "Utah Hockey Club": "UTA", "Vancouver Canucks": "VAN", 
+    "Vegas Golden Knights": "VGK", "Washington Capitals": "WSH", "Winnipeg Jets": "WPG"
+}
+
 def american_to_decimal(odds):
     return (odds / 100) + 1 if odds > 0 else (100 / abs(odds)) + 1
 
+def devig_proportional(odds1, odds2):
+    dec1, dec2 = american_to_decimal(odds1), american_to_decimal(odds2)
+    overround = (1 / dec1) + (1 / dec2)
+    return (1 / dec1) / overround, (1 / dec2) / overround
+
 def run_backtest():
     if not API_KEY:
-        print("Error: ODDS_API_KEY environment variable not found in Secrets.")
+        print("Error: ODDS_API_KEY secret not found.")
         return
         
     current_date = datetime.strptime(START_DATE, "%Y-%m-%dT%H:%M:%SZ")
@@ -28,22 +46,23 @@ def run_backtest():
     total_wagered = 0.0
     bet_history = []
     
-    print("--- INITIATING 25-26 NHL BACKTEST (ALL MARKETS) ---")
+    print("--- INITIATING REAL NHL BACKTEST (PINNACLE BENCHMARK) ---")
     
     while current_date <= end_dt:
         date_str = current_date.strftime("%Y-%m-%dT%H:%M:%SZ")
         nhl_date_str = current_date.strftime("%Y-%m-%d")
         
+        # 1. Fetch Historical Odds
         url = f"https://api.the-odds-api.com/v4/historical/sports/icehockey_nhl/odds?apiKey={API_KEY}&regions=us,eu&markets=h2h,spreads,totals&date={date_str}"
         response = requests.get(url)
         
         if response.status_code != 200:
-            print(f"[{nhl_date_str}] API Error {response.status_code}: Skipping date.")
-            current_date += timedelta(days=2) 
+            current_date += timedelta(days=1)
             continue
             
         games = response.json().get('data', [])
         
+        # 2. Fetch REAL Official Box Scores
         try:
             score_res = requests.get(f"https://api-web.nhle.com/v1/score/{nhl_date_str}", timeout=10).json()
             box_scores = {
@@ -51,54 +70,110 @@ def run_backtest():
                     "away_pts": g['awayTeam']['score'],
                     "home_pts": g['homeTeam']['score']
                 }
-                for g in score_res.get('games', [])
+                for g in score_res.get('games', []) if g['gameState'] in ['FINAL', 'OFF']
             }
         except Exception:
             box_scores = {}
             
         daily_bets = 0
-        
-        for game in games:
-            market_types = ['ML', 'Spread', 'Total']
-            for m_type in market_types:
-                true_prob = np.random.uniform(0.48, 0.55)
-                retail_dec = 2.15
-                ev_pct = (true_prob * retail_dec - 1) * 100
-                
-                if ev_pct > 0:
-                    stake = FLAT_BET_AMOUNT
-                    won_bet = np.random.random() < true_prob 
-                    profit = (stake * (retail_dec - 1)) if won_bet else -stake
-                    
-                    bankroll += profit
-                    total_wagered += stake
-                    daily_bets += 1
-                    
-                    bet_history.append({
-                        'Date': nhl_date_str,
-                        'Market': m_type,
-                        'EV_Pct': ev_pct,
-                        'Profit': profit,
-                        'Won': won_bet
-                    })
-                    
-        if daily_bets > 0:
-            print(f"[{nhl_date_str}] Processed {daily_bets} +EV wagers.")
             
-        current_date += timedelta(days=2)
+        # 3. Process Each Game
+        for game in games:
+            away_team = game['away_team']
+            home_team = game['home_team']
+            
+            away_abbrev = TEAM_ABBREVS.get(away_team)
+            home_abbrev = TEAM_ABBREVS.get(home_team)
+            game_key = f"{away_abbrev}_{home_abbrev}"
+            
+            # Skip if we don't have the final score (postponed, hasn't finished, etc.)
+            if game_key not in box_scores:
+                continue 
+                
+            actual_away_pts = box_scores[game_key]['away_pts']
+            actual_home_pts = box_scores[game_key]['home_pts']
+            
+            # Extract Pinnacle True Probabilities as the sharp truth
+            pinny = next((b for b in game.get('bookmakers', []) if b['key'] == 'pinnacle'), None)
+            if not pinny: continue
+            
+            true_probs = {}
+            for market in pinny['markets']:
+                m_type = market['key']
+                if len(market['outcomes']) == 2:
+                    p1, p2 = market['outcomes'][0], market['outcomes'][1]
+                    t1, t2 = devig_proportional(p1['price'], p2['price'])
+                    
+                    # Store exact probabilities based on the market and point line
+                    true_probs[f"{m_type}_{p1['name']}_{p1.get('point', '')}"] = t1
+                    true_probs[f"{m_type}_{p2['name']}_{p2.get('point', '')}"] = t2
+            
+            # 4. Check Retail Books for EV & Grade
+            for book in game.get('bookmakers', []):
+                if book['key'] in ['draftkings', 'fanduel', 'betmgm', 'caesars']:
+                    for market in book['markets']:
+                        m_type = market['key']
+                        market_label = 'Moneyline' if m_type == 'h2h' else 'Puck Line' if m_type == 'spreads' else 'Total'
+
+                        for outcome in market['outcomes']:
+                            name = outcome['name']
+                            odds = outcome['price']
+                            point = outcome.get('point', '')
+                            
+                            tp_key = f"{m_type}_{name}_{point}"
+                            if tp_key in true_probs:
+                                true_p = true_probs[tp_key]
+                                retail_dec = american_to_decimal(odds)
+                                ev_pct = (true_p * retail_dec - 1) * 100
+                                
+                                if ev_pct > 0.5:
+                                    # GRADE THE BET AGAINST ACTUAL NHL SCORE
+                                    won_bet = False
+                                    is_push = False
+                                    
+                                    if m_type == 'h2h':
+                                        if name == away_team: won_bet = actual_away_pts > actual_home_pts
+                                        else: won_bet = actual_home_pts > actual_away_pts
+                                    
+                                    elif m_type == 'spreads':
+                                        if name == away_team: 
+                                            won_bet = (actual_away_pts + point) > actual_home_pts
+                                            if (actual_away_pts + point) == actual_home_pts: is_push = True
+                                        else: 
+                                            won_bet = (actual_home_pts + point) > actual_away_pts
+                                            if (actual_home_pts + point) == actual_away_pts: is_push = True
+                                            
+                                    elif m_type == 'totals':
+                                        combined = actual_away_pts + actual_home_pts
+                                        if combined == point: is_push = True
+                                        elif name == 'Over': won_bet = combined > point
+                                        elif name == 'Under': won_bet = combined < point
+                                        
+                                    # Do not log pushes (ties) as they drag down ROI math artificially
+                                    if not is_push: 
+                                        profit = (FLAT_BET_AMOUNT * (retail_dec - 1)) if won_bet else -FLAT_BET_AMOUNT
+                                        bankroll += profit
+                                        total_wagered += FLAT_BET_AMOUNT
+                                        daily_bets += 1
+                                        
+                                        bet_history.append({
+                                            'Date': nhl_date_str,
+                                            'Market': market_label,
+                                            'EV_Pct': ev_pct,
+                                            'Profit': profit,
+                                            'Won': won_bet
+                                        })
+                                        
+        if daily_bets > 0:
+            print(f"[{nhl_date_str}] Processed {daily_bets} graded wagers.")
+            
+        current_date += timedelta(days=1)
         
     df = pd.DataFrame(bet_history)
     
-    # 2. FIX: Early exit if DataFrame is empty to prevent KeyError
     if df.empty:
-        print("\nNo bets were recorded. Exiting cleanly without generating stats.")
-        output = {
-            "total_bets": 0,
-            "total_wagered": 0.0,
-            "net_profit": 0.0,
-            "roi": 0.0,
-            "buckets": []
-        }
+        print("\nNo bets were recorded.")
+        output = {"total_bets": 0, "total_wagered": 0.0, "net_profit": 0.0, "roi": 0.0, "buckets": [], "markets": []}
         with open('backtest_results.json', 'w') as f:
             json.dump(output, f, indent=4)
         return
@@ -106,6 +181,7 @@ def run_backtest():
     net_profit = bankroll - INITIAL_BANKROLL
     roi = (net_profit / total_wagered * 100) if total_wagered > 0 else 0.0
     
+    # 5. Output EV Buckets
     bins = [0, 2.0, 4.0, 6.0, np.inf]
     labels = ['0.0% - 2.0%', '2.0% - 4.0%', '4.0% - 6.0%', '6.0%+']
     df['EV_Bucket'] = pd.cut(df['EV_Pct'], bins=bins, labels=labels)
@@ -114,15 +190,19 @@ def run_backtest():
     for label, group in df.groupby('EV_Bucket', observed=False):
         b_bets = len(group)
         b_profit = group['Profit'].sum() if b_bets > 0 else 0.0
-        b_win_rate = f"{(group['Won'].mean() * 100):.1f}%" if b_bets > 0 else "0.0%"
         b_roi = (b_profit / (b_bets * FLAT_BET_AMOUNT) * 100) if b_bets > 0 else 0.0
-        
         bucket_data.append({
-            "range": label,
-            "bets": int(b_bets),
-            "win_rate": b_win_rate,
-            "profit": round(float(b_profit), 2),
-            "roi": round(float(b_roi), 2)
+            "range": label, "bets": int(b_bets), "profit": round(float(b_profit), 2), "roi": round(float(b_roi), 2)
+        })
+
+    # 6. Output Market Type Breakdown
+    market_data = []
+    for label, group in df.groupby('Market', observed=False):
+        m_bets = len(group)
+        m_profit = group['Profit'].sum() if m_bets > 0 else 0.0
+        m_roi = (m_profit / (m_bets * FLAT_BET_AMOUNT) * 100) if m_bets > 0 else 0.0
+        market_data.append({
+            "type": label, "bets": int(m_bets), "profit": round(float(m_profit), 2), "roi": round(float(m_roi), 2)
         })
 
     output = {
@@ -130,13 +210,14 @@ def run_backtest():
         "total_wagered": total_wagered,
         "net_profit": round(net_profit, 2),
         "roi": round(roi, 2),
-        "buckets": bucket_data
+        "buckets": bucket_data,
+        "markets": market_data
     }
 
     with open('backtest_results.json', 'w') as f:
         json.dump(output, f, indent=4)
         
-    print("\nBacktest complete. Saved to backtest_results.json")
+    print("\nReal grading complete. Saved to backtest_results.json")
 
 if __name__ == "__main__":
     run_backtest()
